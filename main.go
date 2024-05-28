@@ -11,7 +11,7 @@ import (
 
 func main() {
 	if len(os.Args) < 2 {
-		log.Err("Missing required param: 'server' or 'client'")
+		log.Err("missing required param: 'server' or 'client'")
 		os.Exit(1)
 	}
 
@@ -22,45 +22,36 @@ func main() {
 		s, err := server.NewServer(consts.Host, consts.Port)
 
 		if err != nil {
-			log.Err("Server Creation Failed: %+v", err)
+			log.Err("server creation failed: %+v", err)
 			os.Exit(1)
 		}
 		defer s.Close()
-		log.Info("Server running")
 
-		s.Listen()
+		err = s.Listen()
+
+		if err != nil {
+			log.Err("failed to listen to server: %+v", err)
+			os.Exit(1)
+		}
 	case "client":
 		if len(os.Args) < 3 {
-			log.Err("Missing required argument 'name'")
+			log.Err("missing required argument 'name'")
 			os.Exit(1)
 		}
 
 		name := os.Args[2]
 
-		if len(name) > consts.ClientNameSizeLimit {
-			log.Err("Client name is too long, max size: %d", consts.ClientNameSizeLimit)
-			os.Exit(1)
-		}
-
 		c, err := client.NewClient(consts.Host, consts.Port, name)
 
 		if err != nil {
-			log.Err("Client Creation Failed: %+v", err)
+			log.Err("client creation failed: %+v", err)
 			os.Exit(1)
 		}
 		defer c.Close()
 
-		for c.StayOpen {
-			go c.Run()
-
-			if err != nil {
-				c.StayOpen = false
-				log.Err("Error - %+v", err)
-			}
-		}
-
+		go c.Run()
 	default:
-		log.Err("Invalid command '%s' expected one of ['server', 'client']", cmd)
+		log.Err("invalid command '%s' expected one of ['server', 'client']", cmd)
 		os.Exit(1)
 	}
 }

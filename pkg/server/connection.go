@@ -1,58 +1,83 @@
 package server
 
 import (
-	"chat/internal/consts"
+	"bufio"
 	"chat/internal/log"
-	"chat/internal/utils"
+	"chat/internal/message"
+	"fmt"
+	"io"
 	"net"
+	"strings"
 )
 
 type Connection struct {
-	id   int
 	name string
 	conn net.Conn
 }
 
-func NewConnection(id int, conn net.Conn) (*Connection, error) {
-	buffer := make([]byte, consts.ClientNameSizeLimit)
-	length, err := conn.Read(buffer)
+func NewConnection(conn net.Conn) (*Connection, error) {
+	reader := bufio.NewReader(conn)
+	rawMsg, err := reader.ReadBytes('\n')
+
+	if err != nil && err != io.EOF {
+		return nil, err
+	}
+
+	msg, err := message.FromBytes(rawMsg)
 
 	if err != nil {
 		return nil, err
 	}
 
-	name := buffer[0:length]
+	if msg.MessageType != message.Connect {
+		return nil, fmt.Errorf("invalid message type, expected \"Connect\" found %s", msg.MessageType.ToString())
+	}
 
 	return &Connection{
-		id:   id,
-		name: string(name),
+		name: msg.Author,
 		conn: conn,
 	}, nil
 }
 
-func (c *Connection) Handle(s *server) {
-	buffer := make([]byte, consts.MessageSizeLimit)
-	length, err := c.conn.Read(buffer)
+func (c *Connection) Close(s *server) {
+	s.mutex.Lock()
+	delete(s.connections, c.name)
+	s.mutex.Unlock()
+	c.conn.Close()
+	log.Info("Disconnected %s", c.name)
+}
 
-	if err != nil {
-		log.Err("Error: %+v", err)
+func (c *Connection) Handle(s *server) {
+	defer c.Close(s)
+
+	reader := bufio.NewReader(c.conn)
+	msg, err := reader.ReadString('\n')
+
+	if err != nil && err != io.EOF {
+		log.Err("failed to read from conn: %+v", err)
 		return
 	}
 
-	msg := utils.SanitiseMessage(buffer[0:length])
+	log.Info("raw msg %s", msg)
 
-	log.Info("Received %s from %s", string(msg), c.name)
+	msg = strings.Trim(msg, " \n\r")
 
-	for _, conn := range s.connections {
-		if conn.id == c.id {
+	log.Info("Received %s from %s", msg, c.name)
+
+	ack := message.NewAckMessage(c.name)
+
+	_, err = c.conn.Write(ack.ToBytes())
+
+	if err != nil {
+		log.Err("failed to ack message: %+v", err)
+		return
+	}
+
+	for name, conn := range s.connections {
+		if c.name == name {
 			continue
 		}
 
-		log.Info("Writing %s to %s", string(msg), conn.name)
-		_, err = conn.conn.Write(msg)
-
-		if err != nil {
-			log.Err("Error: %+v", err)
-		}
+		conn.conn.Write([]byte(msg))
 	}
 }
