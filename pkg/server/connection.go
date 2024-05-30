@@ -2,12 +2,10 @@ package server
 
 import (
 	"bufio"
-	"chat/internal/log"
 	"chat/internal/message"
 	"fmt"
 	"io"
 	"net"
-	"strings"
 )
 
 type Connection struct {
@@ -44,40 +42,40 @@ func (c *Connection) Close(s *server) {
 	delete(s.connections, c.name)
 	s.mutex.Unlock()
 	c.conn.Close()
-	log.Info("Disconnected %s", c.name)
 }
 
 func (c *Connection) Handle(s *server) {
 	defer c.Close(s)
 
-	reader := bufio.NewReader(c.conn)
-	msg, err := reader.ReadString('\n')
+	for {
+		reader := bufio.NewReader(c.conn)
 
-	if err != nil && err != io.EOF {
-		log.Err("failed to read from conn: %+v", err)
-		return
-	}
+		rawMsg, err := reader.ReadBytes('\n')
 
-	log.Info("raw msg %s", msg)
-
-	msg = strings.Trim(msg, " \n\r")
-
-	log.Info("Received %s from %s", msg, c.name)
-
-	ack := message.NewAckMessage(c.name)
-
-	_, err = c.conn.Write(ack.ToBytes())
-
-	if err != nil {
-		log.Err("failed to ack message: %+v", err)
-		return
-	}
-
-	for name, conn := range s.connections {
-		if c.name == name {
-			continue
+		if err != nil && err != io.EOF {
+			return
 		}
 
-		conn.conn.Write([]byte(msg))
+		msg, err := message.FromBytes(rawMsg)
+
+		if err != nil {
+			return
+		}
+
+		switch msg.MessageType {
+		case message.Connect:
+			fmt.Printf("Unexpected message type \"Connect\" expected \"Send\" or \"Ack\"\n")
+			return
+		case message.Send:
+			ack := message.NewAckMessage(c.name)
+			_, err = c.conn.Write(ack.ToBytes())
+
+			if err != nil {
+				return
+			}
+
+			s.sendToAll(msg, c.name)
+		}
+
 	}
 }

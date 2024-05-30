@@ -2,16 +2,16 @@ package main
 
 import (
 	"chat/internal/consts"
-	"chat/internal/log"
 	"chat/pkg/client"
 	"chat/pkg/server"
+	"fmt"
 	"os"
 	"strings"
 )
 
 func main() {
 	if len(os.Args) < 2 {
-		log.Err("missing required param: 'server' or 'client'")
+		fmt.Printf("Missing required arg [\"server\" or \"client\"]\n")
 		os.Exit(1)
 	}
 
@@ -22,7 +22,7 @@ func main() {
 		s, err := server.NewServer(consts.Host, consts.Port)
 
 		if err != nil {
-			log.Err("server creation failed: %+v", err)
+			fmt.Printf("Failed to create server: %+v\n", err)
 			os.Exit(1)
 		}
 		defer s.Close()
@@ -30,12 +30,12 @@ func main() {
 		err = s.Listen()
 
 		if err != nil {
-			log.Err("failed to listen to server: %+v", err)
+			fmt.Printf("Failed to listen to server: %+v\n", err)
 			os.Exit(1)
 		}
 	case "client":
 		if len(os.Args) < 3 {
-			log.Err("missing required argument 'name'")
+			fmt.Printf("Missing required argument 'name'\n")
 			os.Exit(1)
 		}
 
@@ -44,14 +44,14 @@ func main() {
 		c, err := client.NewClient(consts.Host, consts.Port, name)
 
 		if err != nil {
-			log.Err("client creation failed: %+v", err)
+			fmt.Printf("Client creation failed: %+v\n", err)
 			os.Exit(1)
 		}
 		defer c.Close()
 
-		go c.Run()
+		c.Run()
 	default:
-		log.Err("invalid command '%s' expected one of ['server', 'client']", cmd)
+		fmt.Printf("invalid command '%s' expected one of ['server', 'client']\n", cmd)
 		os.Exit(1)
 	}
 }

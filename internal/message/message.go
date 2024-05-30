@@ -7,9 +7,9 @@ import (
 type MessageType uint8
 
 const (
-	Connect = iota
-	Send    = iota
-	Ack     = iota
+	Connect MessageType = iota
+	Send                = iota
+	Ack                 = iota
 )
 
 func (m MessageType) ToString() string {

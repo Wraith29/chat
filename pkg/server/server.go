@@ -1,7 +1,6 @@
 package server
 
 import (
-	"chat/internal/log"
 	"chat/internal/message"
 	"errors"
 	"fmt"
@@ -14,7 +13,6 @@ type server struct {
 	listener    net.Listener
 	connections map[string]*Connection
 	mutex       sync.Mutex
-	messages    chan message.Message
 }
 
 func NewServer(host, port string) (*server, error) {
@@ -24,33 +22,32 @@ func NewServer(host, port string) (*server, error) {
 		return nil, err
 	}
 
+	fmt.Printf("Server started on %s:%s\n", host, port)
+
 	return &server{
 		listener:    listener,
 		connections: make(map[string]*Connection),
 		mutex:       sync.Mutex{},
-		messages:    make(chan message.Message),
 		host:        host,
 		port:        port,
 	}, nil
 }
 
 func (s *server) Close() {
+	fmt.Println("Closing Server")
+
 	s.listener.Close()
 	for _, conn := range s.connections {
-		conn.conn.Close()
+		conn.Close(s)
 	}
+
 }
 
 func (s *server) Listen() error {
-	log.Info("Starting Server on %s:%s", s.host, s.port)
-
-	// go s.broadcastMessages()
-
 	for {
 		conn, err := s.listener.Accept()
 
 		if err != nil {
-			log.Err("failed to accept connection: %+v\n", err)
 			return err
 		}
 
@@ -62,34 +59,11 @@ func (s *server) Listen() error {
 			return err
 		}
 
+		fmt.Printf("Received connection from %s\n", connection.name)
+
 		go connection.Handle(s)
 	}
 }
-
-// func (s *server) broadcastMessages() {
-// 	log.Info("Broadcasting Messages")
-
-// 	for {
-// 		msg := <-s.messages
-// 		log.Info("Message Pulled '%s'", msg.Message)
-
-// 		s.mutex.Lock()
-// 		for name, conn := range s.connections {
-// 			if name == msg.Author {
-// 				continue
-// 			}
-
-// 			log.Info("Writing %s to %s", msg.Message, name)
-
-// 			_, err := conn.conn.Write(msg.ToBytes())
-
-// 			if err != nil {
-// 				log.Err("failed to write to connection: %+v", err)
-// 			}
-// 		}
-// 		s.mutex.Unlock()
-// 	}
-// }
 
 func (s *server) add(conn net.Conn) (*Connection, error) {
 	result, err := NewConnection(conn)
@@ -105,7 +79,23 @@ func (s *server) add(conn net.Conn) (*Connection, error) {
 
 	s.connections[result.name] = result
 
-	log.Info("Received connection from %s", result.name)
-
 	return result, nil
+}
+
+func (s *server) sendToAll(msg message.Message, author string) {
+	s.mutex.Lock()
+
+	for name, conn := range s.connections {
+		if author == name {
+			continue
+		}
+
+		_, err := conn.conn.Write(msg.ToBytes())
+
+		if err != nil {
+			return
+		}
+	}
+
+	s.mutex.Unlock()
 }

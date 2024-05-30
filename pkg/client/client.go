@@ -2,18 +2,20 @@ package client
 
 import (
 	"bufio"
-	"chat/internal/log"
 	"chat/internal/message"
 	"fmt"
-	"io"
 	"net"
 	"os"
+	"os/signal"
+	"strings"
+	"sync"
+	"syscall"
 )
 
 type client struct {
-	StayOpen bool
-	Name     string
-	conn     net.Conn
+	Name string
+	conn net.Conn
+	wg   sync.WaitGroup
 }
 
 func NewClient(host, port, name string) (*client, error) {
@@ -31,79 +33,110 @@ func NewClient(host, port, name string) (*client, error) {
 		return nil, err
 	}
 
-	log.Info("connected")
-
 	return &client{
-		conn:     conn,
-		StayOpen: true,
-		Name:     name,
+		conn: conn,
+		Name: name,
+		wg:   sync.WaitGroup{},
 	}, nil
 }
 
 func (c *client) Close() {
-	log.Info("Disconnecting from server")
+	fmt.Printf("Closing client %s\n", c.Name)
 	c.conn.Close()
+	c.wg.Wait()
 }
 
 func (c *client) Run() {
-	for c.StayOpen {
-		go c.Write()
-		go c.Receive()
-	}
+	c.wg.Add(2)
+
+	go c.Write()
+	go c.Receive()
+
+	signals := make(chan os.Signal, 1)
+	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
+	<-signals
+
+	c.Close()
 }
 
-func (c *client) Write() {
-	reader := bufio.NewReader(os.Stdin)
-	input, err := reader.ReadString('\n')
-
-	if err != nil {
-		log.Err("error reading input: %+v", err)
-		return
-	}
-
-	msg := message.NewMessage(message.Send, c.Name, input)
-
-	_, err = c.conn.Write(msg.ToBytes())
-
-	if err != nil {
-		log.Err("failed to write message: %+v", err)
-		return
-	}
-}
-
-func (c *client) readMessage() (message.Message, error) {
+func (c *client) readFromServer() (message.Message, error) {
 	reader := bufio.NewReader(c.conn)
 
-	msg, err := reader.ReadString('\n')
+	// rawMessage, err := reader.ReadBytes('\x00')
+	rawMessage, err := reader.ReadBytes('\n')
 
 	if err != nil {
-		// Return a zeroed message, because we won't access it anyway
 		return message.Message{}, err
 	}
 
-	return message.FromBytes([]byte(msg))
+	msg, err := message.FromBytes(rawMessage)
+
+	if err != nil {
+		return message.Message{}, err
+	}
+
+	return msg, nil
 }
 
-func (c *client) getAckMessage() message.Message {
-	return message.NewMessage(message.Ack, c.Name, "")
+func (c *client) readFromStdin() (message.Message, error) {
+	reader := bufio.NewReader(os.Stdin)
+
+	// Need to write until a newline (enter) is given
+	rawMessage, err := reader.ReadString('\n')
+
+	if err != nil {
+		return message.Message{}, err
+	}
+
+	msg := message.NewMessage(message.Send, c.Name, strings.Trim(rawMessage, " \n\r"))
+
+	return msg, nil
+}
+
+func (c *client) Write() {
+	defer c.wg.Done()
+
+	for {
+		msg, err := c.readFromStdin()
+
+		if err != nil {
+			return
+		}
+
+		_, err = c.conn.Write(msg.ToBytes())
+
+		if err != nil {
+			fmt.Printf("Failed to write to the server: %+v\n", err)
+			return
+		}
+	}
 }
 
 func (c *client) Receive() {
-	msg, err := c.readMessage()
+	defer c.wg.Done()
 
-	if err != nil && err != io.EOF {
-		log.Err("failed to read message: %+v", err)
-		return
-	}
+	for {
+		msg, err := c.readFromServer()
 
-	log.Info("Received %s", msg.Message)
+		if err != nil {
+			fmt.Printf("Failed to read message from server: %+v\n", err)
+			return
+		}
 
-	ack := c.getAckMessage()
+		switch msg.MessageType {
+		case message.Connect:
+			return
+		case message.Send:
+			fmt.Printf("%s: %s\n", msg.Author, msg.Message)
 
-	_, err = c.conn.Write(ack.ToBytes())
+			ack := message.NewAckMessage(c.Name)
 
-	if err != nil {
-		log.Err("failed to ack message: %+v", err)
-		return
+			_, err = c.conn.Write(ack.ToBytes())
+
+			if err != nil {
+				fmt.Printf("Failed to acknowledge message: %+v\n", err)
+				return
+			}
+		}
 	}
 }
