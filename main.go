@@ -65,7 +65,7 @@ func main() {
 					Background(tcell.ColorGray).
 					Foreground(tcell.ColorWhite))
 
-		msgArea := tview.NewTextView().SetTextStyle(tcell.StyleDefault.Normal().Foreground(tcell.ColorWhite))
+		msgArea := tview.NewTextView().SetTextStyle(tcell.StyleDefault.Normal().Foreground(tcell.ColorWhite)).SetScrollable(true)
 
 		go c.ReceiveInto(app, msgArea)
 

@@ -144,8 +144,6 @@ func (c *Client) ReceiveInto(app *tview.Application, msgArea *tview.TextView) {
 			if err != nil {
 				panic(err)
 			}
-
-			// panic(msgArea.GetText(true))
 		}
 	}
 }
