@@ -28,7 +28,7 @@ func NewConnection(conn net.Conn) (*Connection, error) {
 	}
 
 	if msg.MessageType != message.Connect {
-		return nil, fmt.Errorf("invalid message type, expected \"Connect\" found %s", msg.MessageType.ToString())
+		return nil, fmt.Errorf("invalid message type, expected \"Connect\" found %s", msg.MessageType.String())
 	}
 
 	return &Connection{
@@ -67,6 +67,7 @@ func (c *Connection) Handle(s *server) {
 			fmt.Printf("Unexpected message type \"Connect\" expected \"Send\" or \"Ack\"\n")
 			return
 		case message.Send:
+			fmt.Printf("Received %s from %s\n", msg.Message, msg.Author)
 			ack := message.NewAckMessage(c.name)
 			_, err = c.conn.Write(ack.ToBytes())
 
@@ -75,6 +76,8 @@ func (c *Connection) Handle(s *server) {
 			}
 
 			s.sendToAll(msg, c.name)
+		case message.Ack:
+			fmt.Printf("Received ack from %s\n", c.name)
 		}
 
 	}

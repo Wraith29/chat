@@ -6,19 +6,17 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"os/signal"
 	"strings"
-	"sync"
-	"syscall"
+
+	"github.com/rivo/tview"
 )
 
-type client struct {
+type Client struct {
 	Name string
 	conn net.Conn
-	wg   sync.WaitGroup
 }
 
-func NewClient(host, port, name string) (*client, error) {
+func NewClient(host, port, name string) (*Client, error) {
 	conn, err := net.Dial("tcp", fmt.Sprintf("%s:%s", host, port))
 
 	if err != nil {
@@ -33,33 +31,18 @@ func NewClient(host, port, name string) (*client, error) {
 		return nil, err
 	}
 
-	return &client{
+	return &Client{
 		conn: conn,
 		Name: name,
-		wg:   sync.WaitGroup{},
 	}, nil
 }
 
-func (c *client) Close() {
+func (c *Client) Close() {
 	fmt.Printf("Closing client %s\n", c.Name)
 	c.conn.Close()
-	c.wg.Wait()
 }
 
-func (c *client) Run() {
-	c.wg.Add(2)
-
-	go c.Write()
-	go c.Receive()
-
-	signals := make(chan os.Signal, 1)
-	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
-	<-signals
-
-	c.Close()
-}
-
-func (c *client) readFromServer() (message.Message, error) {
+func (c *Client) readFromServer() (message.Message, error) {
 	reader := bufio.NewReader(c.conn)
 
 	// rawMessage, err := reader.ReadBytes('\x00')
@@ -78,7 +61,7 @@ func (c *client) readFromServer() (message.Message, error) {
 	return msg, nil
 }
 
-func (c *client) readFromStdin() (message.Message, error) {
+func (c *Client) readFromStdin() (message.Message, error) {
 	reader := bufio.NewReader(os.Stdin)
 
 	// Need to write until a newline (enter) is given
@@ -93,28 +76,23 @@ func (c *client) readFromStdin() (message.Message, error) {
 	return msg, nil
 }
 
-func (c *client) Write() {
-	defer c.wg.Done()
+func (c *Client) Send(app *tview.Application, msgArea *tview.TextView, rawMsg string) {
+	msg := message.NewMessage(message.Send, c.Name, rawMsg)
 
-	for {
-		msg, err := c.readFromStdin()
+	_, err := c.conn.Write(msg.ToBytes())
 
-		if err != nil {
-			return
-		}
-
-		_, err = c.conn.Write(msg.ToBytes())
-
-		if err != nil {
-			fmt.Printf("Failed to write to the server: %+v\n", err)
-			return
-		}
+	if err != nil {
+		fmt.Printf("Failed to write to the server: %+v\n", err)
+		return
 	}
+
+	app.QueueUpdateDraw(func() {
+		currentContent := msgArea.GetText(true)
+		msgArea.SetText(currentContent + msg.String())
+	})
 }
 
-func (c *client) Receive() {
-	defer c.wg.Done()
-
+func (c *Client) Receive() {
 	for {
 		msg, err := c.readFromServer()
 
@@ -137,6 +115,37 @@ func (c *client) Receive() {
 				fmt.Printf("Failed to acknowledge message: %+v\n", err)
 				return
 			}
+		}
+	}
+}
+
+func (c *Client) ReceiveInto(app *tview.Application, msgArea *tview.TextView) {
+	for {
+		msg, err := c.readFromServer()
+
+		if err != nil {
+			panic(err)
+		}
+
+		switch msg.MessageType {
+		case message.Connect:
+			panic("Invalid message type")
+		case message.Send:
+			go app.QueueUpdateDraw(func() {
+				currentContent := msgArea.GetText(true)
+
+				msgArea.SetText(currentContent + msg.String())
+			})
+
+			ackMsg := message.NewAckMessage(c.Name)
+
+			_, err := c.conn.Write(ackMsg.ToBytes())
+
+			if err != nil {
+				panic(err)
+			}
+
+			// panic(msgArea.GetText(true))
 		}
 	}
 }

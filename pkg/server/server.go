@@ -95,6 +95,8 @@ func (s *server) sendToAll(msg message.Message, author string) {
 		if err != nil {
 			return
 		}
+
+		fmt.Printf("Sent %s to %s\n", msg.Message, conn.name)
 	}
 
 	s.mutex.Unlock()

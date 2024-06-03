@@ -2,7 +2,11 @@ package message
 
 import (
 	"errors"
+	"fmt"
+	"time"
 )
+
+const timestampFmt = "02/01/06 15:04:05"
 
 type MessageType uint8
 
@@ -12,7 +16,7 @@ const (
 	Ack                 = iota
 )
 
-func (m MessageType) ToString() string {
+func (m MessageType) String() string {
 	switch m {
 	case Connect:
 		return "Connect"
@@ -28,6 +32,7 @@ func (m MessageType) ToString() string {
 type Message struct {
 	MessageType     MessageType
 	Author, Message string
+	timestamp       time.Time
 }
 
 func NewMessage(messageType MessageType, author, message string) Message {
@@ -35,15 +40,20 @@ func NewMessage(messageType MessageType, author, message string) Message {
 		MessageType: messageType,
 		Author:      author,
 		Message:     message,
+		timestamp:   time.Now(),
 	}
 }
 
+func (m *Message) time() string {
+	return m.timestamp.Format(timestampFmt)
+}
+
+func (m *Message) String() string {
+	return fmt.Sprintf("%s - %s: %s\n", m.time(), m.Author, m.Message)
+}
+
 func NewAckMessage(author string) Message {
-	return Message{
-		MessageType: Ack,
-		Author:      author,
-		Message:     "",
-	}
+	return NewMessage(Ack, author, "")
 }
 
 func (m *Message) ToBytes() []byte {
@@ -58,6 +68,12 @@ func (m *Message) ToBytes() []byte {
 	msgLen := len(m.Message)
 	buf = append(buf, []byte(string(rune(msgLen)))...)
 	buf = append(buf, []byte(m.Message)...)
+
+	msgTime := m.time()
+
+	timeLen := len(msgTime)
+	buf = append(buf, []byte(string(rune(timeLen)))...)
+	buf = append(buf, []byte(msgTime)...)
 
 	buf = append(buf, '\n')
 
@@ -104,10 +120,19 @@ func FromBytes(b []byte) (Message, error) {
 	authorName := string(reader.readBytes(authorNameLen))
 	msgLen := int(reader.readByte())
 	msg := string(reader.readBytes(msgLen))
+	timeLen := int(reader.readByte())
+	timestamp := string(reader.readBytes(timeLen))
+
+	msgTime, err := time.Parse(timestampFmt, timestamp)
+
+	if err != nil {
+		return Message{}, err
+	}
 
 	return Message{
 		MessageType: msgType,
 		Author:      string(authorName),
 		Message:     msg,
+		timestamp:   msgTime,
 	}, nil
 }
