@@ -5,17 +5,25 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"strings"
 	"sync"
+
+	"github.com/rivo/tview"
 )
 
 type server struct {
-	host, port  string
-	listener    net.Listener
-	connections map[string]*Connection
-	mutex       sync.Mutex
+	host, port     string
+	listener       net.Listener
+	connections    map[string]*Connection
+	messages       []message.Message
+	mutex          sync.Mutex
+	app            *tview.Application
+	clientList     *tview.List
+	messageList    *tview.TextView
+	selectedClient string
 }
 
-func NewServer(host, port string) (*server, error) {
+func NewServer(host, port string, app *tview.Application, clientList *tview.List, messageList *tview.TextView) (*server, error) {
 	listener, err := net.Listen("tcp", fmt.Sprintf("%s:%s", host, port))
 
 	if err != nil {
@@ -25,17 +33,20 @@ func NewServer(host, port string) (*server, error) {
 	fmt.Printf("Server started on %s:%s\n", host, port)
 
 	return &server{
-		listener:    listener,
-		connections: make(map[string]*Connection),
-		mutex:       sync.Mutex{},
-		host:        host,
-		port:        port,
+		listener:       listener,
+		connections:    make(map[string]*Connection),
+		messages:       make([]message.Message, 0),
+		mutex:          sync.Mutex{},
+		host:           host,
+		port:           port,
+		app:            app,
+		clientList:     clientList,
+		messageList:    messageList,
+		selectedClient: "",
 	}, nil
 }
 
 func (s *server) Close() {
-	fmt.Println("Closing Server")
-
 	s.listener.Close()
 	for _, conn := range s.connections {
 		conn.Close(s)
@@ -59,9 +70,30 @@ func (s *server) Listen() error {
 			return err
 		}
 
-		fmt.Printf("Received connection from %s\n", connection.name)
+		go s.app.QueueUpdateDraw(func() {
+			s.clientList.AddItem(connection.name, "", 0, func() {
+				s.showMessagesFromUser(connection.name)
+				s.selectedClient = connection.name
+			})
+		})
 
 		go connection.Handle(s)
+	}
+}
+
+func (s *server) DisconnectCurrentUser() {
+	user, found := s.connections[s.selectedClient]
+
+	if !found {
+		return
+	}
+
+	dcMsg := message.NewMessage(message.Disconnect, "Server", "")
+
+	_, err := user.conn.Write(dcMsg.ToBytes())
+
+	if err != nil {
+		panic(err)
 	}
 }
 
@@ -95,9 +127,40 @@ func (s *server) sendToAll(msg message.Message, author string) {
 		if err != nil {
 			return
 		}
-
-		fmt.Printf("Sent %s to %s\n", msg.Message, conn.name)
 	}
 
 	s.mutex.Unlock()
+}
+
+func (s *server) refreshMessageList(resetTitle bool) {
+	contents := strings.Builder{}
+	for _, msg := range s.messages {
+		contents.WriteString(msg.String())
+	}
+
+	go s.app.QueueUpdateDraw(func() {
+		s.messageList.SetText(contents.String())
+
+		if resetTitle {
+			s.messageList.SetTitle("Messages")
+		}
+	})
+}
+
+func (s *server) refreshClientList() {
+}
+
+func (s *server) showMessagesFromUser(clientName string) {
+	messageDisplay := strings.Builder{}
+
+	for _, msg := range s.messages {
+		if msg.Author == clientName {
+			messageDisplay.WriteString(msg.String())
+		}
+	}
+
+	go s.app.QueueUpdateDraw(func() {
+		s.messageList.SetText(messageDisplay.String())
+		s.messageList.SetTitle("Messages - " + clientName)
+	})
 }

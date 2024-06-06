@@ -40,3 +40,4 @@
 - [ ] UI
   - [x] Send messages
   - [ ] View Messages (Scroll once reaching a certain amount?)
+

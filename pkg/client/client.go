@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/rivo/tview"
 )
@@ -32,8 +33,8 @@ func NewClient(host, port, name string) (*Client, error) {
 	}
 
 	return &Client{
-		conn: conn,
 		Name: name,
+		conn: conn,
 	}, nil
 }
 
@@ -130,11 +131,24 @@ func (c *Client) ReceiveInto(app *tview.Application, msgArea *tview.TextView) {
 		switch msg.MessageType {
 		case message.Connect:
 			panic("Invalid message type")
+		case message.Disconnect:
+			go app.QueueUpdateDraw(func() {
+				currentContent := msgArea.GetText(true)
+
+				msgArea.SetText(currentContent + "Received a Disconnect Signal from the server. Closing connection")
+				msgArea.ScrollToEnd()
+			})
+			time.Sleep(time.Second * 5)
+
+			c.Close()
+			app.Stop()
+			break
 		case message.Send:
 			go app.QueueUpdateDraw(func() {
 				currentContent := msgArea.GetText(true)
 
 				msgArea.SetText(currentContent + msg.String())
+				msgArea.ScrollToEnd()
 			})
 
 			ackMsg := message.NewAckMessage(c.Name)

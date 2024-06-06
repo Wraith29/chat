@@ -11,9 +11,10 @@ const timestampFmt = "02/01/06 15:04:05"
 type MessageType uint8
 
 const (
-	Connect MessageType = iota
-	Send                = iota
-	Ack                 = iota
+	Connect    MessageType = iota
+	Send                   = iota
+	Ack                    = iota
+	Disconnect             = iota
 )
 
 func (m MessageType) String() string {
@@ -24,6 +25,8 @@ func (m MessageType) String() string {
 		return "Send"
 	case Ack:
 		return "Ack"
+	case Disconnect:
+		return "Disconnect"
 	default:
 		return "Invalid"
 	}

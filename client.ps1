@@ -1,1 +1,1 @@
-go run main.go client @args
+go run cmd/client/client.go @args

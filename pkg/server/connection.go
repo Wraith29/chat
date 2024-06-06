@@ -41,6 +41,9 @@ func (c *Connection) Close(s *server) {
 	s.mutex.Lock()
 	delete(s.connections, c.name)
 	s.mutex.Unlock()
+
+	s.refreshClientList()
+
 	c.conn.Close()
 }
 
@@ -64,10 +67,11 @@ func (c *Connection) Handle(s *server) {
 
 		switch msg.MessageType {
 		case message.Connect:
-			fmt.Printf("Unexpected message type \"Connect\" expected \"Send\" or \"Ack\"\n")
 			return
 		case message.Send:
-			fmt.Printf("Received %s from %s\n", msg.Message, msg.Author)
+			s.messages = append(s.messages, msg)
+			s.refreshMessageList(false)
+
 			ack := message.NewAckMessage(c.name)
 			_, err = c.conn.Write(ack.ToBytes())
 
@@ -76,8 +80,6 @@ func (c *Connection) Handle(s *server) {
 			}
 
 			s.sendToAll(msg, c.name)
-		case message.Ack:
-			fmt.Printf("Received ack from %s\n", c.name)
 		}
 
 	}
