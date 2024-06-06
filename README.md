@@ -5,7 +5,7 @@
 **Server**
 
 ```sh
-> go run main.go server
+> go run cmd/server/server.go
 > # OR
 > ./server
 ```
@@ -13,7 +13,7 @@
 **Client**
 
 ```sh
-> go run main.go client <client_name>
+> go run cmd/client/client.go <client_name>``
 > # OR
 > ./client <client_name>
 ```
@@ -27,11 +27,10 @@
 **Server**
 
 - [x] Allow users to connect
-- [ ] Allow users to disconnect at will
-- [ ] UI
-  - [ ] See active connections
-  - [ ] View Messages sent by a specific user
-  - [ ] Force Disconnect user
+- [x] UI
+  - [x] See active connections
+  - [x] View Messages sent by a specific user
+  - [x] Force Disconnect user
 
 **Client**
 
