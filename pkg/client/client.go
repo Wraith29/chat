@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/rivo/tview"
@@ -15,6 +14,7 @@ import (
 type Client struct {
 	Name string
 	conn net.Conn
+	open bool
 }
 
 func NewClient(host, port, name string) (*Client, error) {
@@ -35,18 +35,21 @@ func NewClient(host, port, name string) (*Client, error) {
 	return &Client{
 		Name: name,
 		conn: conn,
+		open: true,
 	}, nil
 }
 
-func (c *Client) Close() {
-	fmt.Printf("Closing client %s\n", c.Name)
+func (c *Client) Close(app *tview.Application) {
+	c.open = false
 	c.conn.Close()
+
+	app.Stop()
+	os.Exit(0)
 }
 
 func (c *Client) readFromServer() (message.Message, error) {
 	reader := bufio.NewReader(c.conn)
 
-	// rawMessage, err := reader.ReadBytes('\x00')
 	rawMessage, err := reader.ReadBytes('\n')
 
 	if err != nil {
@@ -58,21 +61,6 @@ func (c *Client) readFromServer() (message.Message, error) {
 	if err != nil {
 		return message.Message{}, err
 	}
-
-	return msg, nil
-}
-
-func (c *Client) readFromStdin() (message.Message, error) {
-	reader := bufio.NewReader(os.Stdin)
-
-	// Need to write until a newline (enter) is given
-	rawMessage, err := reader.ReadString('\n')
-
-	if err != nil {
-		return message.Message{}, err
-	}
-
-	msg := message.NewMessage(message.Send, c.Name, strings.Trim(rawMessage, " \n\r"))
 
 	return msg, nil
 }
@@ -93,35 +81,8 @@ func (c *Client) Send(app *tview.Application, msgArea *tview.TextView, rawMsg st
 	})
 }
 
-func (c *Client) Receive() {
-	for {
-		msg, err := c.readFromServer()
-
-		if err != nil {
-			fmt.Printf("Failed to read message from server: %+v\n", err)
-			return
-		}
-
-		switch msg.MessageType {
-		case message.Connect:
-			return
-		case message.Send:
-			fmt.Printf("%s: %s\n", msg.Author, msg.Message)
-
-			ack := message.NewAckMessage(c.Name)
-
-			_, err = c.conn.Write(ack.ToBytes())
-
-			if err != nil {
-				fmt.Printf("Failed to acknowledge message: %+v\n", err)
-				return
-			}
-		}
-	}
-}
-
 func (c *Client) ReceiveInto(app *tview.Application, msgArea *tview.TextView) {
-	for {
+	for c.open {
 		msg, err := c.readFromServer()
 
 		if err != nil {
@@ -140,9 +101,7 @@ func (c *Client) ReceiveInto(app *tview.Application, msgArea *tview.TextView) {
 			})
 			time.Sleep(time.Second * 5)
 
-			c.Close()
-			app.Stop()
-			break
+			c.Close(app)
 		case message.Send:
 			go app.QueueUpdateDraw(func() {
 				currentContent := msgArea.GetText(true)
@@ -156,8 +115,15 @@ func (c *Client) ReceiveInto(app *tview.Application, msgArea *tview.TextView) {
 			_, err := c.conn.Write(ackMsg.ToBytes())
 
 			if err != nil {
-				panic(err)
+				fmt.Printf(":(")
+				os.Exit(1)
 			}
 		}
+	}
+}
+
+func (c *Client) executeCommand(app *tview.Application, command string) {
+	if command == "quit" {
+		c.Close(app)
 	}
 }

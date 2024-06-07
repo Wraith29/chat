@@ -53,6 +53,12 @@ func CreateApp(name string) (*appState, error) {
 		SetDoneFunc(func(k tcell.Key) {
 			switch k {
 			case tcell.KeyEnter:
+				if msg[0] == '/' {
+					c.executeCommand(app, msg[1:])
+					msg = ""
+					break
+				}
+
 				go c.Send(app, msgArea, msg)
 				msg = ""
 			}
@@ -83,5 +89,5 @@ func (a *appState) Run() error {
 }
 
 func (a *appState) Close() {
-	a.client.Close()
+	a.client.Close(a.app)
 }

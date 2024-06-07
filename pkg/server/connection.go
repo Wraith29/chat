@@ -40,9 +40,9 @@ func NewConnection(conn net.Conn) (*Connection, error) {
 func (c *Connection) Close(s *server) {
 	s.mutex.Lock()
 	delete(s.connections, c.name)
+	clientIdx := s.clientList.FindItems(c.name, "", true, false)[0]
+	s.clientList.RemoveItem(clientIdx)
 	s.mutex.Unlock()
-
-	s.refreshClientList()
 
 	c.conn.Close()
 }

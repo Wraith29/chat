@@ -147,9 +147,6 @@ func (s *server) refreshMessageList(resetTitle bool) {
 	})
 }
 
-func (s *server) refreshClientList() {
-}
-
 func (s *server) showMessagesFromUser(clientName string) {
 	messageDisplay := strings.Builder{}
 
